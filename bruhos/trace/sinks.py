@@ -103,14 +103,21 @@ class SinkDispatcher:
         self._q.put(ep)
 
     def _run(self) -> None:
-        while (ep := self._q.get()) is not None:
-            for s in self.sinks:
-                try:
-                    self.receipts.append((ep.episode_id, s.name, s.emit(ep)))
-                except Exception as e:  # a failing sink must never take down the runtime
-                    log.warning("sink %s failed for %s: %s", s.name, ep.episode_id, e)
-                    self.receipts.append((ep.episode_id, s.name, f"error: {e}"))
-            self._q.task_done()
+        while True:
+            ep = self._q.get()
+            try:
+                if ep is None:
+                    return
+                for s in self.sinks:
+                    try:
+                        self.receipts.append((ep.episode_id, s.name, s.emit(ep)))
+                    except Exception as e:  # a failing sink must never take down the runtime
+                        log.warning("sink %s failed for %s: %s", s.name, ep.episode_id, e)
+                        self.receipts.append((ep.episode_id, s.name, f"error: {e}"))
+            finally:
+                # Acknowledge every item, including the close sentinel, so q.join()
+                # (and therefore flush) completes after close().
+                self._q.task_done()
 
     def flush(self, timeout: float | None = None) -> bool:
         done = threading.Event()

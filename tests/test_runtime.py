@@ -93,3 +93,18 @@ def test_failed_sink_does_not_crash():
 def test_out_of_scope_instruction_has_no_plan():
     ep = Runtime(SimBody(), RulesPlanner()).run("Do a backflip.")
     assert not ep.success and ep.end_reason == "no plan for instruction"
+
+
+def test_flush_completes_after_close():
+    class OkSink(Sink):
+        name = "ok"
+
+        def emit(self, ep):
+            return {"n": len(ep.steps)}
+
+    d = SinkDispatcher([OkSink()])
+    ep = Runtime(SimBody(), RulesPlanner()).run("Wave hello.")
+    d.submit(ep)
+    d.close()
+    assert d.flush(5), "flush() must complete once every submitted episode was emitted"
+    assert d.receipts and d.receipts[0][1] == "ok"
